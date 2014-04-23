@@ -411,18 +411,33 @@ func (cl *Client) waitForSocket() {
 
 // BUG(cjyar): Doesn't implement TLS/SASL EXTERNAL.
 func (cl *Client) chooseSasl(fe *Features) {
-	var digestMd5 bool
+	var response *auth
+
 	for _, m := range fe.Mechanisms.Mechanism {
 		switch strings.ToLower(m) {
 		case "digest-md5":
-			digestMd5 = true
+			response = &auth{XMLName: xml.Name{Space: NsSASL, Local: "auth"}, Mechanism: "DIGEST-MD5"}
+		case "plain":
+			response = cl.saslPlainResponse()
 		}
 	}
 
-	if digestMd5 {
-		auth := &auth{XMLName: xml.Name{Space: NsSASL, Local: "auth"}, Mechanism: "DIGEST-MD5"}
-		cl.xmlOut <- auth
+	if response != nil {
+		cl.xmlOut <- response
 	}
+}
+
+func (cl *Client) saslPlainResponse() *auth {
+	clStr := "\x00" + cl.Jid.Node + "\x00" + cl.password
+	b64 := base64.StdEncoding
+
+	response := &auth{
+		XMLName:   xml.Name{Space: NsSASL, Local: "auth"},
+		Mechanism: "PLAIN",
+		Chardata:  b64.EncodeToString([]byte(clStr)),
+	}
+
+	return response
 }
 
 func (cl *Client) handleSasl(srv *auth) {
